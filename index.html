@@ -236,6 +236,8 @@ function cargarVoces() {
 if ('speechSynthesis' in window) { cargarVoces(); speechSynthesis.onvoiceschanged = cargarVoces; }
 
 function hablar(texto, luego) {
+  if (rec) { rec.onend = null; try { rec.abort(); } catch (e) {} rec = null; } // que no se escuche a sí mismo
+  document.querySelectorAll('.linea.parcial').forEach(function (d) { d.remove(); });
   if (!conVoz || !('speechSynthesis' in window)) { estado('idle'); if (luego) luego(); return; }
   speechSynthesis.cancel();
   var u = new SpeechSynthesisUtterance(texto);
