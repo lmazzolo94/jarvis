@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#03080f">
+<title>J.A.R.V.I.S.</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #03080f; --cyan: #4fd8ff; --cyan-dim: rgba(79, 216, 255, .35); --cyan-faint: rgba(79, 216, 255, .12);
+    --amber: #ffb547; --red: #ff5a5a; --ink: #d8f4ff; --muted: #6f97ab;
+    --core: var(--cyan);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; color: var(--ink); background: var(--bg);
+    font: 500 17px/1.4 Rajdhani, "Segoe UI", sans-serif; letter-spacing: .02em; overflow: hidden;
+    background-image:
+      radial-gradient(ellipse at 50% 38%, rgba(30, 110, 160, .28), transparent 60%),
+      linear-gradient(rgba(79, 216, 255, .045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(79, 216, 255, .045) 1px, transparent 1px);
+    background-size: 100% 100%, 32px 32px, 32px 32px;
+  }
+  body::after { /* líneas de monitor */
+    content: ""; position: fixed; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(transparent 0 2px, rgba(0, 0, 0, .18) 2px 3px);
+  }
+  .app { height: 100%; max-width: 900px; margin: 0 auto; display: flex; flex-direction: column;
+    padding: max(12px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom)); }
+
+  header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .logo { font: 700 18px Orbitron, sans-serif; letter-spacing: .32em; color: var(--cyan); text-shadow: 0 0 12px var(--cyan-dim); }
+  .tools { display: flex; gap: 6px; align-items: center; }
+  .chip { font: 600 12px Orbitron, sans-serif; letter-spacing: .12em; color: var(--muted); background: transparent;
+    border: 1px solid var(--cyan-faint); border-radius: 4px; padding: 6px 9px; cursor: pointer; }
+  .chip.on, .chip:hover { color: var(--cyan); border-color: var(--cyan-dim); box-shadow: 0 0 10px var(--cyan-faint) inset; }
+
+  .hud { display: flex; justify-content: space-between; margin-top: 10px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .14em; }
+  .hud b { display: block; font: 500 22px Orbitron, sans-serif; color: var(--ink); letter-spacing: .06em; }
+  .hud .der { text-align: right; }
+
+  .reactor-wrap { display: grid; place-items: center; margin: 4px 0 0; }
+  .reactor { width: min(68vw, 36vh, 340px); aspect-ratio: 1; cursor: pointer; position: relative; }
+  .reactor svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 10px var(--cyan-dim)); }
+  .reactor circle { fill: none; stroke: var(--core); transition: stroke .5s; }
+  .r-spin { transform-origin: 200px 200px; animation: giro 40s linear infinite; }
+  .r-spin.rev { animation-direction: reverse; }
+  .r-spin.f1 { animation-duration: 26s; } .r-spin.f2 { animation-duration: 14s; } .r-spin.f3 { animation-duration: 60s; }
+  @keyframes giro { to { transform: rotate(360deg); } }
+  .nucleo { transform-origin: 200px 200px; animation: respira 4s ease-in-out infinite; }
+  @keyframes respira { 50% { transform: scale(1.06); opacity: .85; } }
+  .nivel { transform-origin: 200px 200px; transform: scale(calc(1 + var(--nivel, 0) * .22)); transition: transform .12s; }
+
+  body[data-estado="escuchando"] { --core: #7ff0ff; }
+  body[data-estado="escuchando"] .nucleo { animation-duration: 1.4s; }
+  body[data-estado="pensando"] { --core: var(--amber); }
+  body[data-estado="pensando"] .r-spin { animation-duration: 3s !important; }
+  body[data-estado="hablando"] .nucleo { animation: none; }
+  body[data-estado="error"] { --core: var(--red); }
+
+  .estado { text-align: center; font: 600 13px Orbitron, sans-serif; letter-spacing: .4em; color: var(--core); margin: 8px 0 4px; min-height: 18px; text-shadow: 0 0 10px var(--cyan-faint); }
+
+  .log { flex: 1; overflow-y: auto; padding: 6px 2px; mask-image: linear-gradient(transparent, #000 18%); -webkit-mask-image: linear-gradient(transparent, #000 18%); }
+  .linea { margin: 10px 0; max-width: 92%; overflow-wrap: anywhere; }
+  .linea small { display: block; font: 600 10.5px Orbitron, sans-serif; letter-spacing: .25em; color: var(--muted); margin-bottom: 2px; }
+  .linea.jarvis { border-left: 2px solid var(--cyan-dim); padding-left: 10px; color: var(--ink); font-size: 18px; }
+  .linea.tu { margin-left: auto; text-align: right; color: var(--muted); }
+  .linea.parcial { opacity: .6; font-style: italic; }
+  .linea.err { color: var(--red); border-color: var(--red); }
+
+  .controles { display: flex; align-items: center; gap: 10px; padding-top: 8px; }
+  .entrada { flex: 1; display: flex; border: 1px solid var(--cyan-faint); border-radius: 6px; background: rgba(5, 20, 32, .7); min-width: 0; }
+  .entrada input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--ink); font: inherit; padding: 11px 12px; outline: none; }
+  .entrada input::placeholder { color: var(--muted); }
+  .entrada button { background: transparent; border: 0; color: var(--cyan); font: 700 12px Orbitron, sans-serif; letter-spacing: .1em; padding: 0 12px; cursor: pointer; }
+  .mic { width: 62px; height: 62px; flex: none; border-radius: 50%; border: 2px solid var(--cyan); background: radial-gradient(circle, rgba(79, 216, 255, .25), rgba(3, 8, 15, .9) 70%);
+    color: var(--cyan); cursor: pointer; display: grid; place-items: center; box-shadow: 0 0 18px var(--cyan-dim); }
+  .mic svg { width: 26px; height: 26px; }
+  body[data-estado="escuchando"] .mic { animation: late 1.2s ease-in-out infinite; border-color: #7ff0ff; }
+  @keyframes late { 50% { box-shadow: 0 0 34px rgba(127, 240, 255, .8); } }
+
+  .velo { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; background: rgba(2, 6, 12, .88); backdrop-filter: blur(4px); text-align: center; padding: 24px; }
+  .velo[hidden] { display: none; }
+  .velo h1 { font: 700 26px Orbitron, sans-serif; letter-spacing: .4em; color: var(--cyan); margin: 0 0 6px; text-shadow: 0 0 16px var(--cyan-dim); }
+  .velo p { color: var(--muted); margin: 0 0 22px; }
+  .velo .botones { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .velo button { font: 700 14px Orbitron, sans-serif; letter-spacing: .2em; color: var(--cyan); background: rgba(79, 216, 255, .08);
+    border: 1px solid var(--cyan-dim); border-radius: 6px; padding: 14px 20px; cursor: pointer; }
+  .velo button:hover { background: rgba(79, 216, 255, .18); }
+
+  @media (max-width: 480px) {
+    .logo { font-size: 14px; letter-spacing: .2em; }
+    .tools { gap: 4px; }
+    .chip { font-size: 10px; letter-spacing: .06em; padding: 6px 6px; }
+  }
+  @media (min-width: 760px) {
+    .reactor { width: min(44vh, 400px); }
+    .hud b { font-size: 26px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .r-spin, .nucleo { animation: none !important; } }
+</style>
+</head>
+<body data-estado="idle">
+<div class="app">
+  <header>
+    <div class="logo">J.A.R.V.I.S.</div>
+    <div class="tools">
+      <button class="chip" id="bQuien" title="Quién habla">SEÑOR</button>
+      <button class="chip on" id="bManos" title="Manos libres: después de responder vuelve a escuchar">MANOS</button>
+      <button class="chip on" id="bVoz" title="Tocar para cambiar de voz · mantener para silenciar">VOZ</button>
+      <button class="chip" id="bNuevo" title="Empezar una charla nueva">↺</button>
+    </div>
+  </header>
+
+  <div class="hud">
+    <div><span id="fecha">—</span><b id="hora">--:--</b></div>
+    <div class="der"><span>Dólar blue</span><b id="dolar">—</b></div>
+  </div>
+
+  <div class="reactor-wrap">
+    <div class="reactor" id="reactor" title="Tocar para hablar">
+      <svg viewBox="0 0 400 400" aria-hidden="true">
+        <defs>
+          <radialGradient id="gNucleo">
+            <stop offset="0" stop-color="#ffffff" stop-opacity=".95"/>
+            <stop offset=".35" stop-color="var(--core)" stop-opacity=".8"/>
+            <stop offset="1" stop-color="var(--core)" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <g class="r-spin f3"><circle cx="200" cy="200" r="192" stroke-width="1" stroke-dasharray="2 7" opacity=".55"/></g>
+        <g class="r-spin rev"><circle cx="200" cy="200" r="174" stroke-width="10" stroke-dasharray="1.5 8.5" opacity=".45"/></g>
+        <g class="r-spin f1"><circle cx="200" cy="200" r="150" stroke-width="3" stroke-dasharray="70 26 12 26" opacity=".8"/></g>
+        <circle cx="200" cy="200" r="128" stroke-width="1" opacity=".3"/>
+        <g class="r-spin rev f2"><circle cx="200" cy="200" r="110" stroke-width="7" stroke-dasharray="130 42" opacity=".65"/></g>
+        <g class="nivel"><circle cx="200" cy="200" r="86" stroke-width="2" opacity=".75"/></g>
+        <g class="nucleo">
+          <circle cx="200" cy="200" r="72" style="fill:url(#gNucleo);stroke:none" opacity=".55"/>
+          <circle cx="200" cy="200" r="34" style="fill:url(#gNucleo);stroke:none"/>
+          <circle cx="200" cy="200" r="52" stroke-width="1.5" opacity=".9"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+  <div class="estado" id="estado">EN LÍNEA</div>
+
+  <div class="log" id="log" aria-live="polite"></div>
+
+  <div class="controles">
+    <form class="entrada" id="form">
+      <input id="texto" placeholder="Escribir a Jarvis…" autocomplete="off">
+      <button>ENVIAR</button>
+    </form>
+    <button class="mic" id="mic" title="Hablar" aria-label="Hablar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="velo" id="velo">
+  <div>
+    <h1>J.A.R.V.I.S.</h1>
+    <p id="veloTxt">Identifíquese para iniciar.</p>
+    <div class="botones" id="veloBotones">
+      <button data-quien="señor">SEÑOR</button>
+      <button data-quien="señora">SEÑORA</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var API = 'https://script.google.com/macros/s/AKfycbxChOLp0atonhVJx3P751bSUJ5up2aFovGA1gRjCDZy4gRvRkxJl_4bAJNh94w6ROSk/exec?asistente=1';
+var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function $(id) { return document.getElementById(id); }
+function leerLS(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
+function guardarLS(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+// La clave viene en el link (#k=...) la primera vez y queda guardada en este dispositivo.
+var m = location.hash.match(/k=([a-f0-9]+)/);
+if (m) { guardarLS('jarvis_k', m[1]); history.replaceState(null, '', location.pathname); }
+var K = leerLS('jarvis_k', '');
+
+var quien = leerLS('jarvis_quien', '');
+var manosLibres = leerLS('jarvis_manos', '1') === '1';
+var conVoz = leerLS('jarvis_voz_on', '1') === '1';
+var mensajes = [];
+try { mensajes = JSON.parse(sessionStorage.getItem('jarvis_msgs') || '[]'); } catch (e) {}
+var ocupado = false, rec = null, silencios = 0;
+
+// ---------- Estado visual ----------
+var ESTADOS = { idle: 'EN LÍNEA', escuchando: 'ESCUCHANDO', pensando: 'PROCESANDO', hablando: 'HABLANDO', error: 'ERROR' };
+function estado(e) { document.body.dataset.estado = e; $('estado').textContent = ESTADOS[e]; if (e !== 'hablando') nivel(0); }
+function nivel(v) { document.documentElement.style.setProperty('--nivel', v); }
+
+function linea(quienHabla, texto, clase) {
+  var d = document.createElement('div');
+  d.className = 'linea ' + quienHabla + (clase ? ' ' + clase : '');
+  var s = document.createElement('small');
+  s.textContent = quienHabla === 'jarvis' ? 'JARVIS' : (quien || 'usted').toUpperCase();
+  var t = document.createElement('span');
+  d.appendChild(s); d.appendChild(t);
+  $('log').appendChild(d);
+  escribir(t, texto, quienHabla === 'jarvis' && !clase);
+  return t;
+}
+function escribir(el, texto, maquina) {
+  if (!maquina) { el.textContent = texto; bajar(); return; }
+  var i = 0;
+  (function paso() { i += 2; el.textContent = texto.slice(0, i); bajar(); if (i < texto.length) setTimeout(paso, 18); })();
+}
+function bajar() { $('log').scrollTop = $('log').scrollHeight; }
+
+// ---------- Voz (navegador) ----------
+var voces = [], vozIdx = 0;
+function puntaje(v) {
+  var p = 0, n = v.name;
+  if (/^es[-_]AR/i.test(v.lang)) p += 4; else if (/^es[-_](US|MX|419)/i.test(v.lang)) p += 2; else p += 1;
+  if (/natural|online|neural/i.test(n)) p += 3;
+  if (/tom[aá]s|jorge|alvaro|raul|pablo|diego|enrique|juan|carlos|andr[eé]s|gonzalo/i.test(n)) p += 3;
+  if (/google/i.test(n)) p += 1;
+  return p;
+}
+function cargarVoces() {
+  voces = speechSynthesis.getVoices().filter(function (v) { return /^es/i.test(v.lang); })
+    .sort(function (a, b) { return puntaje(b) - puntaje(a); });
+  var guardada = leerLS('jarvis_voz', '');
+  var i = voces.findIndex(function (v) { return v.name === guardada; });
+  vozIdx = i >= 0 ? i : 0;
+}
+if ('speechSynthesis' in window) { cargarVoces(); speechSynthesis.onvoiceschanged = cargarVoces; }
+
+function hablar(texto, luego) {
+  if (!conVoz || !('speechSynthesis' in window)) { estado('idle'); if (luego) luego(); return; }
+  speechSynthesis.cancel();
+  var u = new SpeechSynthesisUtterance(texto);
+  if (voces[vozIdx]) { u.voice = voces[vozIdx]; u.lang = voces[vozIdx].lang; } else u.lang = 'es-AR';
+  u.rate = 1.04; u.pitch = .88;
+  var pulso = setInterval(function () { nivel(.3 + Math.random() * .7); }, 110);
+  u.onend = u.onerror = function () { clearInterval(pulso); estado('idle'); if (luego) luego(); };
+  estado('hablando');
+  speechSynthesis.speak(u);
+}
+
+// ---------- Escuchar (navegador) ----------
+function escuchar() {
+  if (ocupado) return;
+  if (!SR) { linea('jarvis', 'Este navegador no me deja usar el micrófono. Pruebe con Chrome, o escríbame.', 'err'); return; }
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  if (rec) { try { rec.abort(); } catch (e) {} }
+  rec = new SR();
+  rec.lang = 'es-AR'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  var final = '', parcial = null;
+  rec.onresult = function (e) {
+    var t = '';
+    for (var i = 0; i < e.results.length; i++) { t += e.results[i][0].transcript; if (e.results[i].isFinal) final = t; }
+    if (!parcial) parcial = linea('tu', '', 'parcial');
+    parcial.textContent = t; bajar();
+  };
+  rec.onerror = function (e) {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      manosLibres = false; marcar();
+      linea('jarvis', 'No tengo permiso para usar el micrófono. Habilítelo en el candado de la barra de direcciones.', 'err');
+    }
+  };
+  rec.onend = function () {
+    rec = null;
+    if (parcial) parcial.parentNode.remove();
+    if (final.trim()) { silencios = 0; enviar(final.trim()); return; }
+    estado('idle');
+    if (manosLibres && silencios++ < 1) escuchar();
+  };
+  estado('escuchando');
+  try { rec.start(); } catch (e) { estado('idle'); }
+}
+
+// ---------- Cerebro (Apps Script → Claude) ----------
+function enviar(texto) {
+  if (ocupado || !texto) return;
+  ocupado = true;
+  linea('tu', texto, '');
+  estado('pensando');
+  if (mensajes.length > 40) mensajes = []; // charla muy larga: arranca de nuevo para no gastar de más
+  fetch(API, { method: 'POST', body: JSON.stringify({ token: K, accion: 'jarvis', mensajes: mensajes, texto: texto, quien: quien }) })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j.ok) throw new Error(j.error === 'token' ? 'La clave no es válida. Abra el link completo otra vez.' : j.error);
+      mensajes = j.respuesta.mensajes;
+      try { sessionStorage.setItem('jarvis_msgs', JSON.stringify(mensajes)); } catch (e) {}
+      ocupado = false;
+      linea('jarvis', j.respuesta.texto);
+      hablar(j.respuesta.texto, function () { if (manosLibres) { silencios = 0; escuchar(); } });
+    })
+    .catch(function (e) {
+      ocupado = false;
+      estado('error');
+      linea('jarvis', 'Falla de conexión: ' + e.message, 'err');
+      setTimeout(function () { estado('idle'); }, 2500);
+    });
+}
+
+// ---------- Controles ----------
+function marcar() {
+  $('bQuien').textContent = (quien || 'señor').toUpperCase();
+  $('bManos').classList.toggle('on', manosLibres);
+  $('bVoz').classList.toggle('on', conVoz);
+  $('bVoz').textContent = conVoz ? 'VOZ' : 'MUDO';
+}
+$('mic').onclick = $('reactor').onclick = function () {
+  if (document.body.dataset.estado === 'escuchando' && rec) { rec.stop(); return; }
+  if (document.body.dataset.estado === 'hablando') { speechSynthesis.cancel(); }
+  silencios = 0; escuchar();
+};
+$('form').onsubmit = function (e) { e.preventDefault(); var t = $('texto').value.trim(); $('texto').value = ''; enviar(t); };
+$('bQuien').onclick = function () { quien = quien === 'señora' ? 'señor' : 'señora'; guardarLS('jarvis_quien', quien); mensajes = []; marcar(); };
+$('bManos').onclick = function () { manosLibres = !manosLibres; guardarLS('jarvis_manos', manosLibres ? '1' : '0'); marcar(); };
+$('bNuevo').onclick = function () { mensajes = []; sessionStorage.removeItem('jarvis_msgs'); $('log').innerHTML = ''; linea('jarvis', 'Charla nueva. Lo escucho.'); };
+// VOZ: un toque cambia de voz (y la prueba); mantener apretado silencia.
+var apretado;
+$('bVoz').onpointerdown = function () { apretado = setTimeout(function () { apretado = null; conVoz = !conVoz; guardarLS('jarvis_voz_on', conVoz ? '1' : '0'); speechSynthesis.cancel(); marcar(); }, 600); };
+$('bVoz').onpointerup = function () {
+  if (!apretado) return;
+  clearTimeout(apretado);
+  if (!conVoz) { conVoz = true; guardarLS('jarvis_voz_on', '1'); marcar(); }
+  if (!voces.length) return;
+  vozIdx = (vozIdx + 1) % voces.length;
+  guardarLS('jarvis_voz', voces[vozIdx].name);
+  hablar('Voz ' + (vozIdx + 1) + ' de ' + voces.length + '. ¿Le gusta esta, ' + (quien || 'señor') + '?');
+};
+
+// ---------- Hora y dólar ----------
+function reloj() {
+  var d = new Date();
+  $('hora').textContent = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  $('fecha').textContent = d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+reloj(); setInterval(reloj, 15000);
+fetch('https://dolarapi.com/v1/dolares/blue').then(function (r) { return r.json(); })
+  .then(function (j) { $('dolar').textContent = '$ ' + Math.round(j.venta).toLocaleString('es-AR'); }).catch(function () {});
+
+// ---------- Inicio ----------
+function saludo() {
+  var h = new Date().getHours();
+  var s = h < 6 ? 'Buenas noches' : h < 13 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches';
+  return s + ', ' + quien + '. Todos los sistemas en línea. ¿En qué puedo ayudarle?';
+}
+function iniciar() {
+  $('velo').hidden = true;
+  marcar();
+  if (mensajes.length) { linea('jarvis', 'Retomamos donde estábamos, ' + quien + '.'); estado('idle'); return; }
+  var s = saludo();
+  linea('jarvis', s);
+  hablar(s, function () { if (manosLibres) escuchar(); });
+}
+if (!K) {
+  $('veloTxt').textContent = 'Falta la clave de acceso. Abra el link completo que le pasó Lucas.';
+  $('veloBotones').hidden = true;
+} else {
+  if (quien) { $('veloTxt').textContent = 'Sistemas listos.'; $('veloBotones').innerHTML = '<button data-quien="' + quien + '">INICIAR</button>'; }
+  $('veloBotones').onclick = function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    quien = b.dataset.quien; guardarLS('jarvis_quien', quien);
+    iniciar();
+  };
+}
+marcar();
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+</script>
+</body>
+</html>
