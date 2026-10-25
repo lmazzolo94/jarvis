@@ -73,6 +73,7 @@
   .linea.tu { margin-left: auto; text-align: right; color: var(--muted); }
   .linea.parcial { opacity: .6; font-style: italic; }
   .linea.err { color: var(--red); border-color: var(--red); }
+  .linea.sistema { font-size: 14px; color: var(--muted); }
 
   .controles { display: flex; align-items: center; gap: 10px; padding-top: 8px; }
   .entrada { flex: 1; display: flex; border: 1px solid var(--cyan-faint); border-radius: 6px; background: rgba(5, 20, 32, .7); min-width: 0; }
@@ -189,8 +190,20 @@ var K = leerLS('jarvis_k', '');
 var quien = leerLS('jarvis_quien', '');
 var manosLibres = leerLS('jarvis_manos', '1') === '1';
 var conVoz = leerLS('jarvis_voz_on', '1') === '1';
+// La charla queda guardada en el dispositivo (sobrevive a cerrar la pestaña).
 var mensajes = [];
-try { mensajes = JSON.parse(sessionStorage.getItem('jarvis_msgs') || '[]'); } catch (e) {}
+try { mensajes = JSON.parse(localStorage.getItem('jarvis_msgs') || '[]'); } catch (e) {}
+var HORAS_SESION = 3;
+function guardarCharla() { guardarLS('jarvis_msgs', JSON.stringify(mensajes)); guardarLS('jarvis_ultimo', String(Date.now())); }
+
+// Cierre de sesión: Jarvis repasa la charla y guarda en su Memoria lo importante.
+function cerrarSesion(msgs) {
+  if (!msgs || msgs.length < 2) return;
+  fetch(API, { method: 'POST', body: JSON.stringify({ token: K, accion: 'jarvis', mensajes: msgs, texto: '[CERRAR SESIÓN]', quien: quien }) })
+    .then(function (r) { return r.json(); })
+    .then(function (j) { if (j.ok) linea('jarvis', 'Sesión anterior guardada en memoria.', 'sistema'); })
+    .catch(function () {});
+}
 var ocupado = false, rec = null, silencios = 0;
 
 // ---------- Estado visual ----------
@@ -287,13 +300,13 @@ function enviar(texto) {
   ocupado = true;
   linea('tu', texto, '');
   estado('pensando');
-  if (mensajes.length > 40) mensajes = []; // charla muy larga: arranca de nuevo para no gastar de más
+  if (mensajes.length > 40) { cerrarSesion(mensajes); mensajes = []; } // charla muy larga: la guarda y arranca de nuevo
   fetch(API, { method: 'POST', body: JSON.stringify({ token: K, accion: 'jarvis', mensajes: mensajes, texto: texto, quien: quien }) })
     .then(function (r) { return r.json(); })
     .then(function (j) {
       if (!j.ok) throw new Error(j.error === 'token' ? 'La clave no es válida. Abra el link completo otra vez.' : j.error);
       mensajes = j.respuesta.mensajes;
-      try { sessionStorage.setItem('jarvis_msgs', JSON.stringify(mensajes)); } catch (e) {}
+      guardarCharla();
       ocupado = false;
       linea('jarvis', j.respuesta.texto);
       hablar(j.respuesta.texto, function () { if (manosLibres) { silencios = 0; escuchar(); } });
@@ -321,7 +334,12 @@ $('mic').onclick = $('reactor').onclick = function () {
 $('form').onsubmit = function (e) { e.preventDefault(); var t = $('texto').value.trim(); $('texto').value = ''; enviar(t); };
 $('bQuien').onclick = function () { quien = quien === 'señora' ? 'señor' : 'señora'; guardarLS('jarvis_quien', quien); mensajes = []; marcar(); };
 $('bManos').onclick = function () { manosLibres = !manosLibres; guardarLS('jarvis_manos', manosLibres ? '1' : '0'); marcar(); };
-$('bNuevo').onclick = function () { mensajes = []; sessionStorage.removeItem('jarvis_msgs'); $('log').innerHTML = ''; linea('jarvis', 'Charla nueva. Lo escucho.'); };
+$('bNuevo').onclick = function () {
+  var viejos = mensajes;
+  mensajes = []; guardarCharla(); $('log').innerHTML = '';
+  linea('jarvis', 'Charla nueva. Lo escucho.');
+  cerrarSesion(viejos);
+};
 // VOZ: un toque cambia de voz (y la prueba); mantener apretado silencia.
 var apretado;
 $('bVoz').onpointerdown = function () { apretado = setTimeout(function () { apretado = null; conVoz = !conVoz; guardarLS('jarvis_voz_on', conVoz ? '1' : '0'); speechSynthesis.cancel(); marcar(); }, 600); };
@@ -354,7 +372,9 @@ function saludo() {
 function iniciar() {
   $('velo').hidden = true;
   marcar();
-  if (mensajes.length) { linea('jarvis', 'Retomamos donde estábamos, ' + quien + '.'); estado('idle'); return; }
+  var ultimo = Number(leerLS('jarvis_ultimo', '0'));
+  if (mensajes.length && Date.now() - ultimo < HORAS_SESION * 3600e3) { linea('jarvis', 'Retomamos donde estábamos, ' + quien + '.'); estado('idle'); return; }
+  if (mensajes.length) { cerrarSesion(mensajes); mensajes = []; guardarCharla(); } // pasó mucho tiempo: guarda la anterior
   var s = saludo();
   linea('jarvis', s);
   hablar(s, function () { if (manosLibres) escuchar(); });
