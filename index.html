@@ -356,7 +356,7 @@ $('bVoz').onpointerup = function () {
 // ---------- Hora y dólar ----------
 function reloj() {
   var d = new Date();
-  $('hora').textContent = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  $('hora').textContent = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
   $('fecha').textContent = d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 reloj(); setInterval(reloj, 15000);
