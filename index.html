@@ -229,8 +229,12 @@ function escribir(el, texto, maquina) {
 }
 function bajar() { $('log').scrollTop = $('log').scrollHeight; }
 
-// ---------- Voz (navegador) ----------
-var voces = [], vozIdx = 0;
+// ---------- Voz ----------
+// Primera voz: Florian (la del canal de YouTube), generada por el puente de Railway. Después, las del navegador.
+var TTS = 'https://jarvis-production-afc9.up.railway.app/tts/';
+var FLORIAN = { name: 'Florian', florian: true };
+var audio = new Audio();
+var voces = [FLORIAN], vozIdx = 0;
 function puntaje(v) {
   var p = 0, n = v.name;
   if (/^es[-_]AR/i.test(v.lang)) p += 4; else if (/^es[-_](US|MX|419)/i.test(v.lang)) p += 2; else p += 1;
@@ -240,25 +244,48 @@ function puntaje(v) {
   return p;
 }
 function cargarVoces() {
-  voces = speechSynthesis.getVoices().filter(function (v) { return /^es/i.test(v.lang); })
-    .sort(function (a, b) { return puntaje(b) - puntaje(a); });
+  voces = [FLORIAN].concat(speechSynthesis.getVoices().filter(function (v) { return /^es/i.test(v.lang); })
+    .sort(function (a, b) { return puntaje(b) - puntaje(a); }));
   var guardada = leerLS('jarvis_voz', '');
   var i = voces.findIndex(function (v) { return v.name === guardada; });
   vozIdx = i >= 0 ? i : 0;
 }
 if ('speechSynthesis' in window) { cargarVoces(); speechSynthesis.onvoiceschanged = cargarVoces; }
 
+function callar() {
+  audio.onended = audio.onerror = null; audio.pause();
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+}
 function hablar(texto, luego) {
   if (rec) { rec.onend = null; try { rec.abort(); } catch (e) {} rec = null; } // que no se escuche a sí mismo
   document.querySelectorAll('.linea.parcial').forEach(function (d) { d.remove(); });
-  if (!conVoz || !('speechSynthesis' in window)) { estado('idle'); if (luego) luego(); return; }
+  if (!conVoz) { estado('idle'); if (luego) luego(); return; }
+  callar();
+  var pulso = setInterval(function () { nivel(.3 + Math.random() * .7); }, 110);
+  var listo = false;
+  function fin() { if (listo) return; listo = true; clearInterval(pulso); estado('idle'); if (luego) luego(); }
+  estado('hablando');
+  if (voces[vozIdx] === FLORIAN && K) {
+    fetch(TTS + K, { method: 'POST', body: texto })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); })
+      .then(function (b) {
+        if (audio.src) URL.revokeObjectURL(audio.src);
+        audio.src = URL.createObjectURL(b);
+        audio.onended = fin;
+        audio.onerror = function () { navegador(texto, fin); };
+        return audio.play();
+      })
+      .catch(function () { navegador(texto, fin); }); // si falla Florian, habla con la voz del navegador
+  } else navegador(texto, fin);
+}
+function navegador(texto, fin) {
+  if (!('speechSynthesis' in window)) return fin();
   speechSynthesis.cancel();
   var u = new SpeechSynthesisUtterance(texto);
-  if (voces[vozIdx]) { u.voice = voces[vozIdx]; u.lang = voces[vozIdx].lang; } else u.lang = 'es-AR';
+  var v = voces[vozIdx] && !voces[vozIdx].florian ? voces[vozIdx] : voces[1];
+  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'es-AR';
   u.rate = 1.04; u.pitch = .88;
-  var pulso = setInterval(function () { nivel(.3 + Math.random() * .7); }, 110);
-  u.onend = u.onerror = function () { clearInterval(pulso); estado('idle'); if (luego) luego(); };
-  estado('hablando');
+  u.onend = u.onerror = fin;
   speechSynthesis.speak(u);
 }
 
@@ -266,7 +293,7 @@ function hablar(texto, luego) {
 function escuchar() {
   if (ocupado) return;
   if (!SR) { linea('jarvis', 'Este navegador no me deja usar el micrófono. Pruebe con Chrome, o escríbame.', 'err'); return; }
-  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  callar();
   if (rec) { try { rec.abort(); } catch (e) {} }
   rec = new SR();
   rec.lang = 'es-AR'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
@@ -328,7 +355,7 @@ function marcar() {
 }
 $('mic').onclick = $('reactor').onclick = function () {
   if (document.body.dataset.estado === 'escuchando' && rec) { rec.stop(); return; }
-  if (document.body.dataset.estado === 'hablando') { speechSynthesis.cancel(); }
+  if (document.body.dataset.estado === 'hablando') { callar(); }
   silencios = 0; escuchar();
 };
 $('form').onsubmit = function (e) { e.preventDefault(); var t = $('texto').value.trim(); $('texto').value = ''; enviar(t); };
@@ -342,7 +369,7 @@ $('bNuevo').onclick = function () {
 };
 // VOZ: un toque cambia de voz (y la prueba); mantener apretado silencia.
 var apretado;
-$('bVoz').onpointerdown = function () { apretado = setTimeout(function () { apretado = null; conVoz = !conVoz; guardarLS('jarvis_voz_on', conVoz ? '1' : '0'); speechSynthesis.cancel(); marcar(); }, 600); };
+$('bVoz').onpointerdown = function () { apretado = setTimeout(function () { apretado = null; conVoz = !conVoz; guardarLS('jarvis_voz_on', conVoz ? '1' : '0'); callar(); marcar(); }, 600); };
 $('bVoz').onpointerup = function () {
   if (!apretado) return;
   clearTimeout(apretado);
@@ -350,7 +377,7 @@ $('bVoz').onpointerup = function () {
   if (!voces.length) return;
   vozIdx = (vozIdx + 1) % voces.length;
   guardarLS('jarvis_voz', voces[vozIdx].name);
-  hablar('Voz ' + (vozIdx + 1) + ' de ' + voces.length + '. ¿Le gusta esta, ' + (quien || 'señor') + '?');
+  hablar((voces[vozIdx].florian ? 'Voz Florian' : 'Voz ' + (vozIdx + 1) + ' de ' + voces.length) + '. ¿Le gusta esta, ' + (quien || 'señor') + '?');
 };
 
 // ---------- Hora y dólar ----------
