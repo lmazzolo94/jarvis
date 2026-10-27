@@ -265,18 +265,31 @@ function hablar(texto, luego) {
   var listo = false;
   function fin() { if (listo) return; listo = true; clearInterval(pulso); estado('idle'); if (luego) luego(); }
   estado('hablando');
-  if (voces[vozIdx] === FLORIAN && K) {
-    fetch(TTS + K, { method: 'POST', body: texto })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); })
-      .then(function (b) {
-        if (audio.src) URL.revokeObjectURL(audio.src);
-        audio.src = URL.createObjectURL(b);
-        audio.onended = fin;
-        audio.onerror = function () { navegador(texto, fin); };
-        return audio.play();
-      })
-      .catch(function () { navegador(texto, fin); }); // si falla Florian, habla con la voz del navegador
-  } else navegador(texto, fin);
+  if (voces[vozIdx] === FLORIAN && K) florian(trozos(texto), 0, fin);
+  else navegador(texto, fin);
+}
+// Corta la respuesta en frases: la primera sola (suena enseguida), el resto en tandas de ~140 letras.
+function trozos(texto) {
+  var frases = texto.split(/(?<=[.!?…])\s+|\n+/), out = []; // no corta "45.000" (sin espacio después del punto)
+  frases.forEach(function (f) {
+    var u = out.length - 1;
+    if (out.length > 1 && (out[u] + ' ' + f).length < 140) out[u] += ' ' + f; else if (f.trim()) out.push(f);
+  });
+  return out;
+}
+// Florian (la voz del canal), generada por el puente de Railway. Pide todas las frases a la vez y las toca en orden.
+function florian(partes, i, fin) {
+  if (!partes.cola) partes.cola = partes.map(function (p) {
+    var a = new Audio(TTS + K + '?t=' + encodeURIComponent(p.trim()));
+    a.preload = 'auto';
+    return a;
+  });
+  if (i >= partes.length) return fin();
+  audio = partes.cola[i];
+  audio.onended = function () { florian(partes, i + 1, fin); };
+  audio.onerror = function () { navegador(partes.slice(i).join(' '), fin); }; // si falla Florian, sigue la voz del navegador
+  var p = audio.play();
+  if (p) p.catch(function (e) { if (audio === partes.cola[i] && e.name !== 'AbortError') audio.onerror(); });
 }
 function navegador(texto, fin) {
   if (!('speechSynthesis' in window)) return fin();
